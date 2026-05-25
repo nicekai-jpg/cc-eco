@@ -9,16 +9,11 @@ Claude Code 生态切换工具，在 [CC Switch](https://ccswitch.io) 之上增�
 ## 安装
 
 ```bash
+# 方式一：一键安装（推荐）
 curl -fsSL https://raw.githubusercontent.com/limingkai/cc-eco/main/install.sh | bash
-```
 
-或手动安装：
-
-```bash
-mkdir -p ~/.claude-ecosystems
-curl -fsSL https://raw.githubusercontent.com/limingkai/cc-eco/main/cc-eco.sh -o ~/.claude-ecosystems/cc-eco.sh
-# 在 .zshrc 中添加：
-alias cc-eco='bash ~/.claude-ecosystems/cc-eco.sh'
+# 方式二：pip 安装
+pip3 install git+https://github.com/limingkai/cc-eco.git
 ```
 
 ## 用法
@@ -61,9 +56,7 @@ cc-eco switch superpowers
 | 路径 | 方式 |
 |------|------|
 | `~/.claude/skills/` | 符号链接快照 |
-| `~/.claude/agents/` | 符号链接快照 |
-| `~/.claude/hooks/` | 符号链接快照 |
-| `~/.claude/get-shit-done/` | 符号链接快照 |
+| `~/.claude/commands/` | 符号链接快照 |
 | `~/.claude/settings.json` | DB 状态恢复后重新生成 |
 
 ## 隔离的 DB 状态
@@ -79,17 +72,36 @@ cc-eco switch superpowers
 
 ```
 Phase 1: 存档 — 保存当前 DB 状态到当前生态的 db-state.json
-Phase 2: 读档 — 从目标生态的 db-state.json 恢复 DB 状态
-Phase 3: 换传送门 — 替换文件级符号链接
-Phase 4: 同步 skills — 删除禁用的、创建启用的符号链接
-Phase 5: 重新生成 settings.json
+Phase 2: 备份 — 备份 CC Switch 数据库
+Phase 3: 读档 — 从目标生态的 db-state.json 恢复 DB 状态
+Phase 4: 换传送门 — 替换文件级符号链接
+Phase 5: 同步 skills — 删除禁用的、创建启用的符号链接
+Phase 6: 重新生成 settings.json
+Phase 7: 重启 — 重启 Claude Code 和 CC Switch
 ```
+
+## 跨平台支持
+
+| 平台 | 支持级别 | 说明 |
+|------|---------|------|
+| macOS | 完整 | pkill + open + osascript |
+| Linux | 完整 | pkill + xdg-terminal-emulator / 检测终端 |
+| Windows | 尽力 | taskkill + os.startfile，符号链接需开发者模式 |
 
 ## 依赖
 
 - [CC Switch](https://ccswitch.io) — Claude Code 配置管理工具
-- Python 3 — 解析 JSON 和操作 SQLite
-- SQLite 3 — 读写 CC Switch 数据库
+- Python 3.9+ — 运行时（macOS/Linux 自带）
+
+## 从 v2 升级
+
+v3 与 v2 数据格式完全兼容，无需迁移：
+
+- `db-state.json` 格式不变
+- `eco.json` 格式不变
+- `~/.claude-ecosystems/` 目录结构不变
+
+重新运行安装脚本即可升级，旧版 `cc-eco.sh` 会被自动清理。
 
 ## License
 

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# cc-eco shell wrapper — delegates to the Python package
+exec python3 -m cc_eco "$@"
