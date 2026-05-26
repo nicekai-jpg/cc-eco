@@ -7,6 +7,7 @@ import os
 import shutil
 from pathlib import Path
 
+from cc_eco.db import load_db_state
 from cc_eco.utils import (
     CLAUDE_DIR,
     ECO_DIR,
@@ -19,7 +20,6 @@ from cc_eco.utils import (
     error,
     eco_dir,
     eco_json_file,
-    db_state_file,
 )
 
 
@@ -36,7 +36,6 @@ def init_isolation(eco_name: str) -> None:
         dst = eco_path / item
 
         if src.is_symlink():
-            # Existing symlink: resolve and copy target, remove symlink
             real_target = src.resolve()
             if real_target.is_dir():
                 shutil.copytree(str(real_target), str(dst), symlinks=True)
@@ -50,11 +49,9 @@ def init_isolation(eco_name: str) -> None:
         else:
             dst.mkdir(parents=True, exist_ok=True)
 
-        # Create symlink: src -> dst
         src.symlink_to(str(dst))
         info(f"Isolated: {item}")
 
-    # Create eco.json
     create_eco_json(eco_name)
 
 
@@ -78,7 +75,7 @@ def copy_snapshot(src_name: str, dst_name: str) -> None:
     dst_path = eco_dir(dst_name)
     shutil.copytree(str(src_path), str(dst_path), symlinks=True)
 
-    # Update eco.json: set name, clear skill_repos and description
+    # Update eco.json
     eco_path = eco_json_file(dst_name)
     if eco_path.exists():
         data = json.loads(eco_path.read_text())
@@ -87,7 +84,7 @@ def copy_snapshot(src_name: str, dst_name: str) -> None:
         data["description"] = ""
         eco_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
-    # Create empty dirs in dst for any items not yet present
+    # Ensure all isolation items exist in the new snapshot
     for item in get_isolation_items():
         item_path = dst_path / item
         if not item_path.exists():
@@ -110,7 +107,6 @@ def switch_symlinks(eco_name: str) -> None:
         elif src.exists():
             warn(f"{src} is not a symlink, skipping")
         else:
-            # Create new symlink
             src.symlink_to(str(target_dir / item))
             info(f"Created symlink: {item}")
 
@@ -119,11 +115,9 @@ def switch_symlinks(eco_name: str) -> None:
 
 def sync_skills_symlinks(eco_name: str) -> None:
     """Create/remove skill symlinks based on the ecosystem's db-state.json."""
-    state_path = db_state_file(eco_name)
-    if not state_path.exists():
+    state = load_db_state(eco_name)
+    if not state:
         return
-
-    state = json.loads(state_path.read_text())
 
     enabled = [
         name
@@ -142,13 +136,13 @@ def sync_skills_symlinks(eco_name: str) -> None:
     # Delete disabled skills
     for skill_name in disabled:
         skill_path = SKILLS_DIR / skill_name
-        if skill_path.is_symlink() or skill_path.is_dir():
-            if skill_path.is_symlink() or skill_path.is_dir():
-                if skill_path.is_dir() and not skill_path.is_symlink():
-                    shutil.rmtree(str(skill_path))
-                else:
-                    skill_path.unlink()
-            info(f"Removed skill: {skill_name}")
+        if skill_path.is_symlink():
+            skill_path.unlink()
+        elif skill_path.is_dir():
+            shutil.rmtree(str(skill_path))
+        else:
+            continue
+        info(f"Removed skill: {skill_name}")
 
     # Create enabled skills (symlink to cc-switch)
     cc_switch_skills = Path.home() / ".cc-switch" / "skills"
@@ -162,10 +156,10 @@ def sync_skills_symlinks(eco_name: str) -> None:
 
     # Clean orphan symlinks (pointing to cc-switch but not in db-state)
     if SKILLS_DIR.exists():
+        cc_switch_prefix = str(Path.home() / ".cc-switch" / "skills")
         for entry in SKILLS_DIR.iterdir():
             if entry.is_symlink():
                 target = os.readlink(str(entry))
-                cc_switch_prefix = str(Path.home() / ".cc-switch" / "skills")
                 if target.startswith(cc_switch_prefix) and entry.name not in known:
                     entry.unlink()
                     info(f"Removed orphan: {entry.name}")
@@ -226,10 +220,7 @@ SETTINGS_NAMES = {"settings.json", "settings.local.json"}
 
 
 def discover_paths() -> list[tuple[str, str]]:
-    """Find paths in ~/.claude/ that might need isolation.
-
-    Returns list of (name, size_string) tuples.
-    """
+    """Find paths in ~/.claude/ that might need isolation."""
     isolated = set(get_isolation_items())
     results = []
 
@@ -239,28 +230,13 @@ def discover_paths() -> list[tuple[str, str]]:
     for entry in CLAUDE_DIR.iterdir():
         name = entry.name
 
-        # Skip already isolated
-        if name in isolated:
+        if name in isolated or name in EXCLUDE_NAMES or name in SETTINGS_NAMES:
             continue
-
-        # Skip runtime data
-        if name in EXCLUDE_NAMES:
-            continue
-
-        # Skip symlinks (already managed)
         if entry.is_symlink():
             continue
 
-        # Skip settings files (managed via DB)
-        if name in SETTINGS_NAMES:
-            continue
-
-        # Get size
         try:
-            if entry.is_dir():
-                size = _dir_size(entry)
-            else:
-                size = _file_size(entry)
+            size = _dir_size(entry) if entry.is_dir() else _file_size(entry)
         except OSError:
             size = "?"
 
@@ -270,13 +246,11 @@ def discover_paths() -> list[tuple[str, str]]:
 
 
 def _dir_size(path: Path) -> str:
-    """Return human-readable directory size."""
     total = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
     return _format_size(total)
 
 
 def _file_size(path: Path) -> str:
-    """Return human-readable file size."""
     return _format_size(path.stat().st_size)
 
 

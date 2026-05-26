@@ -15,11 +15,32 @@ from cc_eco.utils import DB_PATH, SETTINGS_FILE, info, warn
 
 
 def _connect() -> sqlite3.Connection:
-    """Connect to the CC Switch database with row factory."""
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
     return conn
+
+
+# ─── Load saved state ────────────────────────────────────────────────────
+
+def load_db_state(name: str) -> dict | None:
+    """Load db-state.json for an ecosystem. Returns None if not found."""
+    from cc_eco.utils import db_state_file
+
+    path = db_state_file(name)
+    if path.exists():
+        return json.loads(path.read_text())
+    return None
+
+
+def load_eco_json(name: str) -> dict | None:
+    """Load eco.json for an ecosystem. Returns None if not found."""
+    from cc_eco.utils import eco_json_file
+
+    path = eco_json_file(name)
+    if path.exists():
+        return json.loads(path.read_text())
+    return None
 
 
 # ─── Save / Restore ─────────────────────────────────────────────────────
@@ -246,12 +267,10 @@ def regenerate_settings() -> None:
 # ─── Skill queries ──────────────────────────────────────────────────────
 
 def get_skill_names_from_state(state: dict) -> list[str]:
-    """Return all skill names from a db-state dict."""
     return list(state.get("skills", {}).keys())
 
 
 def get_enabled_skill_names(state: dict) -> list[str]:
-    """Return enabled skill names from a db-state dict."""
     return [
         name
         for name, data in state.get("skills", {}).items()
@@ -260,7 +279,6 @@ def get_enabled_skill_names(state: dict) -> list[str]:
 
 
 def get_disabled_skill_names(state: dict) -> list[str]:
-    """Return disabled skill names from a db-state dict."""
     return [
         name
         for name, data in state.get("skills", {}).items()

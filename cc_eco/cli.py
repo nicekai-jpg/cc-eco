@@ -1,17 +1,17 @@
 """CLI entry point for cc-eco."""
 
+from __future__ import annotations
+
 import argparse
-import json
 import sys
-from pathlib import Path
 
 from cc_eco import __version__
 from cc_eco.db import (
     save_db_state,
     restore_db_state,
     regenerate_settings,
-    get_enabled_skill_names,
-    get_disabled_skill_names,
+    load_db_state,
+    load_eco_json,
 )
 from cc_eco.fs import (
     init_isolation,
@@ -21,26 +21,19 @@ from cc_eco.fs import (
     adopt_path,
     discover_paths,
     delete_ecosystem,
-    create_eco_json,
 )
 from cc_eco.platform_restart import restart_processes
 from cc_eco.utils import (
     ECO_DIR,
     CURRENT_FILE,
     ISOLATION_FILE,
-    DB_PATH,
     CLAUDE_DIR,
-    SKILLS_DIR,
     require_init,
     get_current,
     set_current,
     get_isolation_items,
     backup_db,
     eco_dir,
-    db_state_file,
-    eco_json_file,
-    load_db_state,
-    load_eco_json,
     info,
     warn,
     error,
@@ -59,38 +52,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command")
 
-    # init
-    p = sub.add_parser("init", help="Initialize cc-eco and save current state as first ecosystem")
+    p = sub.add_parser("init", help="Initialize cc-eco with current state")
     p.add_argument("name", help="Name for the initial ecosystem")
 
-    # snapshot
-    p = sub.add_parser("snapshot", help="Create a new ecosystem snapshot from current state")
+    p = sub.add_parser("snapshot", help="Create a new ecosystem snapshot")
     p.add_argument("name", help="Name for the new snapshot")
 
-    # switch
     p = sub.add_parser("switch", help="Switch to a different ecosystem")
-    p.add_argument("name", help="Name of the ecosystem to switch to")
-    p.add_argument("--no-restart", action="store_true", help="Don't restart processes after switch")
+    p.add_argument("name", help="Target ecosystem name")
+    p.add_argument("--no-restart", action="store_true", help="Don't restart processes")
 
-    # status
     sub.add_parser("status", help="Show current ecosystem status")
-
-    # list
     sub.add_parser("list", help="List all ecosystems")
 
-    # delete
     p = sub.add_parser("delete", help="Delete an ecosystem")
-    p.add_argument("name", help="Name of the ecosystem to delete")
+    p.add_argument("name", help="Ecosystem to delete")
     p.add_argument("--force", action="store_true", help="Skip confirmation")
 
-    # discover
     sub.add_parser("discover", help="Find paths that might need isolation")
 
-    # adopt
     p = sub.add_parser("adopt", help="Add a path to isolation")
-    p.add_argument("path", help="Path relative to ~/.claude/ to adopt")
+    p.add_argument("path", help="Path relative to ~/.claude/")
 
-    # isolate
     sub.add_parser("isolate", help="Show isolated paths")
 
     return parser
@@ -102,10 +85,9 @@ def cmd_init(args: argparse.Namespace) -> None:
     name = args.name
     heading(f"Initializing cc-eco with ecosystem '{name}'")
 
-    if ECO_DIR.exists() and any(ECO_DIR.iterdir()):
-        if CURRENT_FILE.exists():
-            error("cc-eco is already initialized")
-            sys.exit(1)
+    if CURRENT_FILE.exists():
+        error("cc-eco is already initialized")
+        sys.exit(1)
 
     ECO_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -145,10 +127,7 @@ def cmd_snapshot(args: argparse.Namespace) -> None:
         error(f"Ecosystem '{name}' already exists")
         sys.exit(1)
 
-    # Copy current ecosystem directory
     copy_snapshot(current, name)
-
-    # Save current DB state into the new snapshot
     save_db_state(name, eco_dir(name))
 
     info(f"Snapshot '{name}' created")
@@ -180,7 +159,7 @@ def cmd_switch(args: argparse.Namespace) -> None:
 
     # Phase 3: Restore target state
     step(f"Restoring state of '{name}'")
-    state = restore_db_state(name, eco_dir(name))
+    restore_db_state(name, eco_dir(name))
 
     # Phase 4: Switch file-level symlinks
     step("Switching symlinks")
@@ -209,32 +188,30 @@ def cmd_status(args: argparse.Namespace) -> None:
         info(f"Current ecosystem: {current}")
     else:
         warn("No current ecosystem set")
+        return
 
-    # Show eco.json details
-    if current:
-        eco_data = load_eco_json(current)
-        if eco_data:
-            print(f"  Description: {eco_data.get('description', '(none)')}")
-            plugins = eco_data.get("enabled_plugins", [])
-            if plugins:
-                print(f"  Plugins: {', '.join(plugins)}")
-            repos = eco_data.get("skill_repos", [])
-            if repos:
-                print(f"  Skill repos: {', '.join(repos)}")
+    eco_data = load_eco_json(current)
+    if eco_data:
+        desc = eco_data.get("description", "")
+        if desc:
+            print(f"  Description: {desc}")
+        plugins = eco_data.get("enabled_plugins", [])
+        if plugins:
+            print(f"  Plugins: {', '.join(plugins)}")
+        repos = eco_data.get("skill_repos", [])
+        if repos:
+            print(f"  Skill repos: {', '.join(repos)}")
 
-    # Show DB state info
-    if current:
-        state = load_db_state(current)
-        if state:
-            skills = state.get("skills", {})
-            enabled = sum(1 for v in skills.values() if v.get("enabled_claude") == 1)
-            disabled = sum(1 for v in skills.values() if v.get("enabled_claude") == 0)
-            mcps = state.get("mcp_servers", {})
-            mcp_enabled = sum(1 for v in mcps.values() if v.get("enabled_claude") == 1)
-            print(f"  Skills: {enabled} enabled, {disabled} disabled")
-            print(f"  MCP servers: {mcp_enabled} enabled")
+    state = load_db_state(current)
+    if state:
+        skills = state.get("skills", {})
+        enabled = sum(1 for v in skills.values() if v.get("enabled_claude") == 1)
+        disabled = sum(1 for v in skills.values() if v.get("enabled_claude") == 0)
+        mcps = state.get("mcp_servers", {})
+        mcp_enabled = sum(1 for v in mcps.values() if v.get("enabled_claude") == 1)
+        print(f"  Skills: {enabled} enabled, {disabled} disabled")
+        print(f"  MCP servers: {mcp_enabled} enabled")
 
-    # Show isolation items
     items = get_isolation_items()
     if items:
         print(f"  Isolated paths: {', '.join(items)}")
@@ -278,10 +255,9 @@ def cmd_delete(args: argparse.Namespace) -> None:
         error(f"Ecosystem '{name}' does not exist")
         sys.exit(1)
 
-    if not args.force:
-        if not confirm(f"Delete ecosystem '{name}'?"):
-            info("Cancelled")
-            return
+    if not args.force and not confirm(f"Delete ecosystem '{name}'?"):
+        info("Cancelled")
+        return
 
     delete_ecosystem(name)
 

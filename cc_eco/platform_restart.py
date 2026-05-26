@@ -1,8 +1,12 @@
 """Cross-platform process restart for CC Switch and Claude Code."""
 
+from __future__ import annotations
+
+import os
 import platform
 import subprocess
 import sys
+import time
 from shutil import which
 
 from cc_eco.utils import info, warn
@@ -21,10 +25,7 @@ def get_platform() -> str:
 
 
 def restart_processes(no_restart: bool = False) -> None:
-    """Restart CC Switch and Claude Code after ecosystem switch.
-
-    If no_restart is True, skip all restart logic.
-    """
+    """Restart CC Switch and Claude Code after ecosystem switch."""
     if no_restart:
         info("Switched (no restart). Please restart Claude Code and CC Switch manually.")
         return
@@ -43,23 +44,16 @@ def restart_processes(no_restart: bool = False) -> None:
 # ─── macOS ───────────────────────────────────────────────────────────────
 
 def _restart_macos() -> None:
-    """Restart processes on macOS using pkill, open, and osascript."""
-    # Kill CC Switch
     _pkill("cc-switch")
-    # Kill Claude Code
     _pkill("claude")
-
-    import time
     time.sleep(1)
 
-    # Restart CC Switch
     try:
         subprocess.run(["open", "/Applications/CC Switch.app"], check=False)
         info("CC Switch restarted")
     except FileNotFoundError:
         warn("Cannot start CC Switch: 'open' command not found")
 
-    # Restart Claude Code in a new terminal
     try:
         subprocess.run(
             ["osascript", "-e", 'tell application "Terminal" to do script "claude"'],
@@ -73,31 +67,19 @@ def _restart_macos() -> None:
 # ─── Linux ───────────────────────────────────────────────────────────────
 
 def _restart_linux() -> None:
-    """Restart processes on Linux."""
-    # Kill CC Switch
     _pkill("cc-switch")
-    # Kill Claude Code
     _pkill("claude")
-
-    import time
     time.sleep(1)
-
-    # Restart CC Switch
     _start_cc_switch_linux()
-
-    # Restart Claude Code in a new terminal
     _start_claude_linux()
 
 
 def _start_cc_switch_linux() -> None:
-    """Try to start CC Switch on Linux."""
-    # Try running from PATH
     if which("cc-switch"):
         subprocess.Popen(["cc-switch"], start_new_session=True)
         info("CC Switch restarted")
         return
 
-    # Try systemd user service
     try:
         result = subprocess.run(
             ["systemctl", "--user", "start", "cc-switch"],
@@ -114,8 +96,6 @@ def _start_cc_switch_linux() -> None:
 
 
 def _start_claude_linux() -> None:
-    """Try to start Claude Code in a new terminal on Linux."""
-    # Try common terminal emulators
     terminals = [
         ("gnome-terminal", ["gnome-terminal", "--", "claude"]),
         ("konsole", ["konsole", "-e", "claude"]),
@@ -130,7 +110,6 @@ def _start_claude_linux() -> None:
             info(f"Claude Code restarted in {name}")
             return
 
-    # Fallback: try xdg-terminal-emulator
     if which("xdg-terminal-emulator"):
         subprocess.Popen(["xdg-terminal-emulator", "claude"], start_new_session=True)
         info("Claude Code restarted")
@@ -142,30 +121,30 @@ def _start_claude_linux() -> None:
 # ─── Windows ─────────────────────────────────────────────────────────────
 
 def _restart_windows() -> None:
-    """Restart processes on Windows (best-effort)."""
-    # Kill
     for proc in ("cc-switch.exe", "claude.exe"):
         try:
             subprocess.run(["taskkill", "/F", "/IM", proc], check=False, capture_output=True)
         except FileNotFoundError:
             pass
 
-    import time
     time.sleep(1)
 
-    # Restart CC Switch
-    try:
-        os_path = "C:\\Program Files\\CC Switch\\cc-switch.exe"
-        subprocess.Popen([os_path], start_new_session=True)
+    # Try to start CC Switch
+    cc_switch_path = os.environ.get(
+        "CC_SWITCH_PATH",
+        r"C:\Program Files\CC Switch\cc-switch.exe",
+    )
+    if os.path.isfile(cc_switch_path):
+        subprocess.Popen([cc_switch_path], start_new_session=True)
         info("CC Switch restarted")
-    except FileNotFoundError:
+    else:
         warn("Cannot start CC Switch on Windows")
 
-    # Restart Claude Code
-    try:
+    # Try to start Claude Code
+    if which("claude"):
         subprocess.Popen(["claude"], start_new_session=True)
         info("Claude Code restarted")
-    except FileNotFoundError:
+    else:
         warn("Cannot start Claude Code on Windows")
 
 
@@ -176,5 +155,4 @@ def _pkill(name: str) -> None:
     try:
         subprocess.run(["pkill", "-x", name], check=False, capture_output=True)
     except FileNotFoundError:
-        # pkill not available (unlikely on macOS/Linux)
         warn(f"Cannot kill {name}: 'pkill' not found")

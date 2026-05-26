@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 import sys
 from datetime import datetime
@@ -49,14 +48,12 @@ def heading(msg: str) -> None:
 
 
 def require_init() -> None:
-    """Exit if cc-eco has not been initialized."""
     if not CURRENT_FILE.exists():
         error("cc-eco is not initialized. Run: cc-eco init <name>")
         sys.exit(1)
 
 
 def get_current() -> str | None:
-    """Return the name of the current ecosystem, or None."""
     if CURRENT_FILE.exists():
         return CURRENT_FILE.read_text().strip() or None
     return None
@@ -67,7 +64,6 @@ def set_current(name: str) -> None:
 
 
 def get_isolation_items() -> list[str]:
-    """Return list of paths that should be isolated per ecosystem."""
     if ISOLATION_FILE.exists():
         lines = ISOLATION_FILE.read_text().strip().splitlines()
         return [l.strip() for l in lines if l.strip()]
@@ -75,7 +71,6 @@ def get_isolation_items() -> list[str]:
 
 
 def add_isolation_item(path: str) -> None:
-    """Append a path to the isolation file."""
     items = get_isolation_items()
     if path not in items:
         items.append(path)
@@ -83,7 +78,6 @@ def add_isolation_item(path: str) -> None:
 
 
 def confirm(prompt: str) -> bool:
-    """Ask user for yes/no confirmation."""
     try:
         answer = input(f"{YELLOW}{prompt} [y/N]{NC} ").strip().lower()
         return answer in ("y", "yes")
@@ -93,7 +87,6 @@ def confirm(prompt: str) -> bool:
 
 
 def backup_db() -> Path | None:
-    """Create a timestamped backup of the CC Switch database."""
     if not DB_PATH.exists():
         return None
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -103,7 +96,6 @@ def backup_db() -> Path | None:
 
 
 def eco_dir(name: str) -> Path:
-    """Return the directory for a given ecosystem name."""
     return ECO_DIR / name
 
 
@@ -113,17 +105,3 @@ def db_state_file(name: str) -> Path:
 
 def eco_json_file(name: str) -> Path:
     return eco_dir(name) / "eco.json"
-
-
-def load_db_state(name: str) -> dict | None:
-    path = db_state_file(name)
-    if path.exists():
-        return json.loads(path.read_text())
-    return None
-
-
-def load_eco_json(name: str) -> dict | None:
-    path = eco_json_file(name)
-    if path.exists():
-        return json.loads(path.read_text())
-    return None
