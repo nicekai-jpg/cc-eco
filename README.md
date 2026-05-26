@@ -9,11 +9,11 @@ Claude Code 生态切换工具，在 [CC Switch](https://ccswitch.io) 之上增�
 ## 安装
 
 ```bash
-# 方式一：一键安装（推荐）
-curl -fsSL https://raw.githubusercontent.com/limingkai/cc-eco/main/install.sh | bash
+# 方式一：pip 安装（推荐）
+pip3 install cc-eco
 
-# 方式二：pip 安装
-pip3 install git+https://github.com/limingkai/cc-eco.git
+# 方式二：一键安装
+curl -fsSL https://raw.githubusercontent.com/nicekai-jpg/cc-eco/main/install.sh | bash
 ```
 
 ## 用法
