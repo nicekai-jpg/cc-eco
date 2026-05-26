@@ -104,7 +104,7 @@ class TestSaveDbState(unittest.TestCase):
                 state = save_db_state("test", eco_dir)
 
             self.assertIn("enabledPlugins", state["provider_settings"])
-            self.assertEqual(state["provider_settings"]["enabledPlugins"], ["p1"])
+            self.assertEqual(state["provider_settings"]["enabledPlugins"], {"p1": True})
 
 
 class TestRestoreDbState(unittest.TestCase):
@@ -147,6 +147,57 @@ class TestRestoreDbState(unittest.TestCase):
                 result = restore_db_state("test", eco_dir)
 
             self.assertIsNone(result)
+
+    def test_restore_normalizes_enabled_plugins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "cc-switch.db"
+            eco_dir = Path(tmp) / "eco"
+            eco_dir.mkdir()
+
+            _create_test_db(db_path)
+
+            # Write a state with enabledPlugins as a list
+            state = {
+                "version": 2,
+                "name": "test",
+                "skills": {},
+                "mcp_servers": {},
+                "provider_settings": {
+                    "enabledPlugins": ["plugin-1", "plugin-2"],
+                    "hooks": {}
+                },
+                "common_config": None
+            }
+            (eco_dir / "db-state.json").write_text(json.dumps(state))
+
+            with patch("cc_eco.db.DB_PATH", db_path):
+                restore_db_state("test", eco_dir)
+
+            # Check that it got saved as a dict in settings_config
+            conn = sqlite3.connect(str(db_path))
+            row = conn.execute("SELECT settings_config FROM providers WHERE is_current = 1 AND app_type = 'claude'").fetchone()
+            conn.close()
+            
+            settings = json.loads(row[0])
+            self.assertEqual(settings["enabledPlugins"], {"plugin-1": True, "plugin-2": True})
+
+
+class TestRegenerateSettings(unittest.TestCase):
+    def test_regenerate_settings_normalizes_enabled_plugins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "cc-switch.db"
+            settings_path = Path(tmp) / "settings.json"
+            
+            _create_test_db(db_path)
+
+            with patch("cc_eco.db.DB_PATH", db_path), \
+                 patch("cc_eco.db.SETTINGS_FILE", settings_path):
+                regenerate_settings()
+
+            self.assertTrue(settings_path.exists())
+            settings = json.loads(settings_path.read_text())
+            # _create_test_db inserted ["p1"] for enabledPlugins, so it should be normalized to {"p1": True}
+            self.assertEqual(settings["enabledPlugins"], {"p1": True})
 
 
 class TestSkillQueries(unittest.TestCase):

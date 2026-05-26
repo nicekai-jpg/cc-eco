@@ -144,7 +144,7 @@ Phase 7: 重启 — 重启 Claude Code 和 CC Switch
   "name": "superpowers",
   "skills": { "<skill_name>": { "enabled_claude": 1 } },
   "mcp_servers": { "<server_name>": { "enabled_claude": 1 } },
-  "provider_settings": { "enabledPlugins": [], "hooks": {} },
+  "provider_settings": { "enabledPlugins": {}, "hooks": {} },
   "common_config": null
 }
 ```

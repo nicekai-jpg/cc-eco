@@ -21,6 +21,16 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+def _normalize_enabled_plugins(val) -> dict:
+    """Ensure enabledPlugins is a dictionary mapping plugin names to booleans."""
+    if isinstance(val, list):
+        return {p: True for p in val if isinstance(p, str)}
+    if isinstance(val, dict):
+        return val
+    return {}
+
+
+
 # ─── Load saved state ────────────────────────────────────────────────────
 
 def load_db_state(name: str) -> dict | None:
@@ -87,7 +97,7 @@ def save_db_state(eco_name: str, eco_dir: Path) -> dict:
             try:
                 settings = json.loads(row["settings_config"])
                 state["provider_settings"] = {
-                    "enabledPlugins": settings.get("enabledPlugins", []),
+                    "enabledPlugins": _normalize_enabled_plugins(settings.get("enabledPlugins")),
                     "hooks": settings.get("hooks", {}),
                 }
             except json.JSONDecodeError:
@@ -161,7 +171,7 @@ def restore_db_state(eco_name: str, eco_dir: Path) -> dict | None:
                 current = {}
 
             if "enabledPlugins" in provider_settings:
-                current["enabledPlugins"] = provider_settings["enabledPlugins"]
+                current["enabledPlugins"] = _normalize_enabled_plugins(provider_settings["enabledPlugins"])
             if "hooks" in provider_settings:
                 current["hooks"] = provider_settings["hooks"]
 
@@ -251,6 +261,10 @@ def regenerate_settings() -> None:
 
         if mcp_servers:
             settings["mcpServers"] = mcp_servers
+
+        # Normalize enabledPlugins to dict
+        if "enabledPlugins" in settings:
+            settings["enabledPlugins"] = _normalize_enabled_plugins(settings["enabledPlugins"])
 
         # Sanitize: remove internal fields
         for key in ("apiFormat", "apiKey", "baseUrl", "model", "providerName"):
